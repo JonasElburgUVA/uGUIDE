@@ -11,6 +11,8 @@ from uGUIDE.density_estimator import get_nf
 from uGUIDE.embedded_net import get_embedded_net
 from uGUIDE.normalization import get_normalizer, save_normalizer
 
+import random
+
 def run_inference(theta, x, config, plot_loss=True, load_state=False):
     """
     Run inference given a training dataset.
@@ -57,8 +59,6 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
     
     # Split training/validation sets
     train_dataset, val_dataset = split_data(theta_norm, x_norm)
-    train_dataloader = DataLoader(train_dataset, batch_size=128, shuffle=True)
-    val_dataloader = DataLoader(val_dataset, batch_size=4_096)
     # Initialize NF and the embedded neural network
     # Or load pretrained ones if load_state=True
     if load_state == True:
@@ -105,6 +105,9 @@ def run_inference(theta, x, config, plot_loss=True, load_state=False):
         and epochs_no_change < config['n_epochs_no_change']:
         
         modules.train()
+        # Sample a subset of the training and validation datasets to speed up training
+        train_dataloader = DataLoader(random.sample(list(train_dataset), int(0.1*len(train_dataset))), batch_size=128, shuffle=True)
+        val_dataloader = DataLoader(random.sample(list(val_dataset), int(0.1*len(val_dataset))), batch_size=4096)
         for theta_batch, x_batch in train_dataloader:
             optimizer.zero_grad()
             embedding = embedded_net(x_batch.detach().type(torch.float32).to(config['device']))
