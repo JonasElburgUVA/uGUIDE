@@ -113,7 +113,15 @@ def estimate_microstructure(x, config, postprocessing=None, voxel_id=0, plot=Tru
     return map, mask, degeneracy_mask, uncertainty, ambiguity
 
 
-def sample_posterior_distribution(x, config):
+def sample_posterior_distribution(
+    x,
+    config,
+    *,
+    x_normalizer=None,
+    theta_normalizer=None,
+    nf=None,
+    embedded_net=None,
+):
     # Only one observation at a time
 
     if x.ndim == 1:
@@ -123,22 +131,35 @@ def sample_posterior_distribution(x, config):
         raise ValueError('x size set in config does not match x size used ' \
                          'for training')
 
+     # --- NEW: lazy init of dependencies if not provided ---
+    if x_normalizer is None:
+        x_normalizer = load_normalizer(config['folderpath'] / config['x_normalizer_file'])
+    if theta_normalizer is None:
+        theta_normalizer = load_normalizer(config['folderpath'] / config['theta_normalizer_file'])
+    if nf is None:
+        nf = get_nf(
+            input_dim=config['size_theta'],
+            nf_features=config['nf_features'],
+            pretrained_state=config['folderpath'] / config['nf_state_dict_file'],
+        )
+        nf.to(config['device'])
+        for p in nf.parameters(): p.requires_grad_(False)
+    if embedded_net is None:
+        embedded_net = get_embedded_net(
+            input_dim=config['size_x'],
+            output_dim=config['nf_features'],
+            layer_1_dim=config['hidden_layers'][0],
+            layer_2_dim=config['hidden_layers'][1],
+            pretrained_state=config['folderpath'] / config['embedder_state_dict_file'],
+            use_MLP=config['use_MLP'],
+        )
+        embedded_net.to(config['device'])
+    # --- end new ---
+
     # Normalize data
-    x_normalizer = load_normalizer(config['folderpath'] / config['x_normalizer_file'])
     x_norm = x_normalizer(x)
     x_norm = torch.from_numpy(x_norm).type(torch.float32).to(config['device'])
-
-    nf = get_nf(input_dim=config['size_theta'],
-                nf_features=config['nf_features'],
-                pretrained_state=config['folderpath'] / config['nf_state_dict_file']
-                )
     nf.to(config['device'])
-    embedded_net = get_embedded_net(input_dim=config['size_x'],
-                                    output_dim=config['nf_features'],
-                                    layer_1_dim=config['hidden_layers'][0],
-                                    layer_2_dim=config['hidden_layers'][1],
-                                    pretrained_state=config['folderpath'] / config['embedder_state_dict_file'],
-                                    use_MLP=config['use_MLP'])
     embedded_net.to(config['device'])
     embedding = embedded_net(x_norm.type(torch.float32).to(config['device']))
 
